@@ -12,7 +12,7 @@
     <style>
         body { margin: 0; overflow: hidden; }
         canvas { display: block; }
-        .hud, #gameOverScreen, #pauseScreen {
+        .hud, #gameOverScreen, #pauseScreen, #startupScreen { /* NAYA: startupScreen */
             font-family: 'Inter', sans-serif;
         }
         .hud {
@@ -58,20 +58,35 @@
             justify-content: center;
             align-items: center;
             z-index: 3; 
-            pointer-events: auto; /* Pause button ko clickable banaya */
+            pointer-events: auto;
         }
 
-        #gameOverScreen, #pauseScreen { 
+        /* NAYA: startupScreen ko gameOver/pause jaisa style kiya */
+        #gameOverScreen, #pauseScreen, #startupScreen { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background-color: rgba(15, 23, 42, 0.8);
-            color: white; display: none;
+            color: white;
             flex-direction: column; justify-content: center; align-items: center;
             text-align: center; z-index: 2;
         }
-        #gameOverScreen h1, #pauseScreen h1 { font-size: 48px; margin: 0; } 
+
+        /* NAYA: startupScreen default mein dikhega */
+        #startupScreen {
+            display: flex;
+            z-index: 10; /* Sabse upar */
+        }
+        /* NAYA: gameOver aur pause default mein hide rahenge */
+        #gameOverScreen, #pauseScreen {
+            display: none;
+        }
+
+
+        #gameOverScreen h1, #pauseScreen h1, #startupScreen h1 { font-size: 48px; margin: 0; } 
+        #startupScreen p { font-size: 20px; margin: 10px 0; }
         #gameOverScreen p { font-size: 24px; }
         
-        #restartButton, #resumeButton { 
+        /* NAYA: startButton ko bhi style diya */
+        #restartButton, #resumeButton, #startButton { 
             padding: 15px 30px; font-size: 20px; font-weight: bold;
             color: white;
             background: linear-gradient(90deg, #38bdf8, #8b5cf6);
@@ -97,6 +112,11 @@
 
     <button id="pauseButton">||</button> 
 
+    <div id="startupScreen">
+        <h1>Street Surf</h1>
+        <p>Swipe or use Arrow Keys to play</p>
+        <button id="startButton">Start Game</button>
+    </div>
     <div id="pauseScreen"> 
         <h1>Paused</h1>
         <button id="resumeButton">Resume</button>
@@ -144,11 +164,14 @@
         const doubleCoinsMaterial = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x16a34a });
         const playerDoubleCoinsMaterial = new THREE.MeshStandardMaterial({ color: 0xa3e635, emissive: 0x84cc16 }); 
 
-        let isPaused = false;
+        let isPaused = false; 
 
-        // --- NAYA CODE: MOBILE ---
-        let touchStartX = 0, touchStartY = 0; // Touch start position
-        // --- END NAYA CODE ---
+        // NAYA CODE: START SCREEN (JS)
+        let gameStarted = false; // Game start state
+        let audioUnlocked = false; 
+        // END NAYA CODE
+
+        let touchStartX = 0, touchStartY = 0; 
 
         // --- Speed Variables ---
         let maxPlayerSpeed = 1.0; 
@@ -165,6 +188,11 @@
         const pauseButton = document.getElementById('pauseButton');
         const pauseScreen = document.getElementById('pauseScreen');
         const resumeButton = document.getElementById('resumeButton');
+        
+        // NAYA CODE: START SCREEN (JS)
+        const startupScreen = document.getElementById('startupScreen');
+        const startButton = document.getElementById('startButton');
+        // END NAYA CODE
 
         // --- Sounds ---
         const musicSound = document.getElementById('musicSound');
@@ -183,28 +211,63 @@
         window.addEventListener('keyup', (event) => { keys[event.key.toLowerCase()] = false; });
         
         // --- Button Controls ---
-        restartButton.addEventListener('click', () => { window.location.reload(); });
+        restartButton.addEventListener('click', () => { 
+            window.location.reload(); 
+        });
         pauseButton.addEventListener('click', togglePause);
         resumeButton.addEventListener('click', togglePause);
 
-        // --- NAYA CODE: MOBILE TOUCH CONTROLS ---
+        // NAYA CODE: START SCREEN (JS)
+        startButton.addEventListener('click', startGame);
+        // END NAYA CODE
+        
+        function unlockAudio() {
+            if (audioUnlocked) return;
+            const allSounds = [musicSound, jumpSound, coinSound, crashSound];
+            allSounds.forEach(sound => {
+                sound.play().catch(() => {});
+                sound.pause();
+                sound.currentTime = 0;
+            });
+            
+            if (!isPaused && !gameOver) {
+                musicSound.play().catch(e => console.error("Music start failed:", e));
+            }
+            audioUnlocked = true;
+        }
+
+        // NAYA CODE: START SCREEN (JS)
+        function startGame() {
+            if (gameStarted) return; // Sirf ek baar chale
+            gameStarted = true;
+            unlockAudio(); // Audio unlock karo aur music bajao
+            startupScreen.style.display = 'none'; // Start screen hatao
+            animate(); // Game loop start karo
+        }
+        // END NAYA CODE
+
+        // --- Mobile Touch Controls ---
         window.addEventListener('touchstart', handleTouchStart, { passive: false });
         window.addEventListener('touchend', handleTouchEnd, { passive: false });
 
         function handleTouchStart(event) {
-            // Pause button par touch ho toh ignore karo
-            if (event.target === pauseButton) return;
+            // Button par touch ho toh ignore karo
+            if (event.target === pauseButton || event.target === resumeButton || event.target === startButton) return;
             
+            // Agar game start nahi hua toh touch se start kardo
+            if (!gameStarted) {
+                startGame();
+            }
+
             if (isPaused || gameOver) return;
-            event.preventDefault(); // Screen ko scroll hone se roko
+            event.preventDefault(); 
             touchStartX = event.touches[0].clientX;
             touchStartY = event.touches[0].clientY;
         }
 
         function handleTouchEnd(event) {
-            if (event.target === pauseButton) return;
-            
-            if (isPaused || gameOver || touchStartX === 0) return;
+            if (event.target === pauseButton || event.target === resumeButton || event.target === startButton) return;
+            if (!gameStarted || isPaused || gameOver || touchStartX === 0) return;
             event.preventDefault(); 
 
             let touchEndX = event.changedTouches[0].clientX;
@@ -213,18 +276,15 @@
             let diffX = touchEndX - touchStartX;
             let diffY = touchEndY - touchStartY;
             
-            let swipeThreshold = 50; // Minimum 50px swipe chahiye
+            let swipeThreshold = 30; 
 
-            // Check karo ki swipe horizontal hai ya vertical
             if (Math.abs(diffX) > Math.abs(diffY)) {
-                // Horizontal swipe
                 if (diffX > swipeThreshold && currentLane < 1) { // Swipe Right
                     currentLane++;
                 } else if (diffX < -swipeThreshold && currentLane > -1) { // Swipe Left
                     currentLane--;
                 }
             } else {
-                // Vertical swipe
                 if (diffY > swipeThreshold && !isJumping && !isSliding) { // Swipe Down
                     isSliding = true; 
                     slideTimer = 40;
@@ -234,23 +294,20 @@
                     jumpSound.play();
                 }
             }
-
-            // Reset start coordinates
             touchStartX = 0;
             touchStartY = 0;
         }
-        // --- END NAYA CODE ---
 
         function togglePause() {
-            if (gameOver) return; 
+            if (gameOver || !gameStarted) return; // Game start nahi hua toh pause nahi hoga
             isPaused = !isPaused; 
             if (isPaused) {
                 pauseScreen.style.display = 'flex'; 
-                musicSound.pause(); 
+                if (audioUnlocked) musicSound.pause(); 
             } else {
                 pauseScreen.style.display = 'none'; 
-                musicSound.play(); 
-                animate(); 
+                if (audioUnlocked) musicSound.play(); 
+                animate(); // Pause se hatne par loop resume karo
             }
         }
 
@@ -313,7 +370,6 @@
                     powerup = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), doubleCoinsMaterial);
                     powerup.userData.type = 'doubleCoins';
                 }
-
                 powerup.position.set(randomLane * laneWidth, 1, nextSpawnZ);
                 scene.add(powerup); powerups.push(powerup);
             }
@@ -337,8 +393,13 @@
                 }
             });
             loadHighScore();
-            musicSound.play().catch(e => console.log("Music play failed. User interaction needed."));
-            animate();
+            
+            // NAYA CODE: Ab game loop yahan se start nahi hoga
+            // Yeh 'startGame' function se hoga.
+            // Lekin scene ko ek baar render zaroor karenge taaki player startup screen par dikhe
+            animate(); 
+            // END NAYA CODE
+
         }, undefined, (error) => {
             console.error('An error happened while loading the player model:', error);
             alert('Could not load player model. Make sure the files are in the correct "models/player" folder and you are using a Live Server.');
@@ -346,12 +407,21 @@
 
         // --- Animation Loop ---
         function animate() {
+            // NAYA CODE: Game state check
+            // Agar game start nahi hua, toh sirf scene render karo aur ruk jao
+            if (!gameStarted) {
+                renderer.render(scene, camera);
+                return;
+            }
+            // Agar game over ya paused hai, toh loop roko
             if (gameOver || isPaused) {
                 if (isPaused) {
                     renderer.render(scene, camera); 
                 }
                 return;
             }
+            // END NAYA CODE
+
             requestAnimationFrame(animate);
 
             if (!player) return;
@@ -363,29 +433,24 @@
                 playerSpeed += speedIncreaseFactor;
             }
 
-            // --- Keyboard Controls Logic ---
-            // (Yeh touch controls ke saath milkar kaam karega)
+            // Keyboard Controls Logic
             if (keys['arrowleft'] && currentLane > -1) { 
                 currentLane--; 
-                keys['arrowleft'] = false; // Key ko consume karo
+                keys['arrowleft'] = false;
             }
             if (keys['arrowright'] && currentLane < 1) { 
                 currentLane++; 
-                keys['arrowright'] = false; // Key ko consume karo
+                keys['arrowright'] = false;
             }
             if (keys['arrowup'] && !isJumping && !isSliding) { 
                 isJumping = true; 
                 jumpVelocity = jumpPower; 
                 jumpSound.play();
-                // Yahan key consume nahi karte kyunki 'isJumping' lock ka kaam karta hai
             }
             if (keys['arrowdown'] && !isJumping && !isSliding) { 
                 isSliding = true; 
                 slideTimer = 40; 
-                // Yahan bhi 'isSliding' lock ka kaam karta hai
             }
-            // --- End Keyboard Controls Logic ---
-
 
             // Treadmill logic
             groundSegments.forEach(s => { s.position.z += playerSpeed; if (s.position.z > segmentLength) s.position.z -= numSegments * segmentLength; });
@@ -416,6 +481,8 @@
             }
 
             // Power-up logic...
+            const powerupDuration = 600; // 10 seconds (FIXED)
+
             if (magnetActive && --magnetTimer <= 0) magnetActive = false;
             
             if (invincibleActive && --invincibilityTimer <= 0) {
@@ -448,7 +515,7 @@
                     if (player.position.distanceTo(obstacle.position) < 15) {
                         const obstacleBox = new THREE.Box3().setFromObject(obstacle);
                         if (playerCollider.intersectsBox(obstacleBox)) {
-                            musicSound.pause();
+                            if (audioUnlocked) musicSound.pause();
                             crashSound.play();
                             gameOver = true;
                             if (score > highScore) {
@@ -478,16 +545,16 @@
                             } else { // It's a power-up
                                 if (item.userData.type === 'magnet') { 
                                     magnetActive = true; 
-                                    magnetTimer = 300; 
+                                    magnetTimer = powerupDuration; 
                                 }
                                 if (item.userData.type === 'invincibility') {
                                     invincibleActive = true; 
-                                    invincibilityTimer = 300;
+                                    invincibilityTimer = powerupDuration;
                                     player.traverse(child => { if (child.isMesh) child.material = invincibilityMaterial; });
                                 }
                                 if (item.userData.type === 'doubleCoins') {
                                     doubleCoinsActive = true;
-                                    doubleCoinsTimer = 300;
+                                    doubleCoinsTimer = powerupDuration;
                                     if (!invincibleActive) {
                                         player.traverse(child => { if (child.isMesh) child.material = playerDoubleCoinsMaterial; });
                                     }
