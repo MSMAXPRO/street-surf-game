@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="data:;base64,iVBORw0KGgo="> <title>Street Surf - Aurora Theme</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo="> 
+    <title>Street Surf - Aurora Theme</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,7 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
     
     <style>
-        body { margin: 0; overflow: hidden; }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #0f172a; }
         canvas { display: block; }
         .hud, #gameOverScreen, #pauseScreen, #startupScreen { font-family: 'Inter', sans-serif; }
         .hud { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: flex-start; color: white; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); z-index: 1; pointer-events: none; }
@@ -45,113 +46,76 @@
     <div id="gameOverScreen"> <h1>Game Over</h1> <p id="finalScore"></p> <button id="restartButton">Restart</button> </div>
     
     <script>
-        // --- Scene, Camera, Renderer, Lighting --- (No changes here)
+        // --- Scene, Camera, Renderer ---
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0f172a); 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
+        const renderer = new THREE.WebGLRenderer({ antialias: true }); 
+        function setupRenderer() { renderer.setSize(window.innerWidth, window.innerHeight); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); }
+        setupRenderer(); document.body.appendChild(renderer.domElement);
+        
+        // --- Lighting ---
         scene.add(new THREE.AmbientLight(0xffffff, 0.8)); const dirLight = new THREE.DirectionalLight(0xffffff, 0.6); dirLight.position.set(5, 10, 5); scene.add(dirLight);
 
-        // --- Game Setup Variables --- (No changes here)
+        // --- Game Setup Variables ---
         const groundSegments = [], obstacles = [], coins = [], powerups = [];
         const segmentLength = 200, numSegments = 3, laneWidth = 5; let player, playerHitbox, originalPlayerMaterial;
         let playerSpeed = 0.5; let currentLane = 0; let isJumping = false, isSliding = false, jumpVelocity = 0, slideTimer = 0;
         const gravity = -0.025, jumpPower = 0.4; let gameOver = false, score = 0, coinCount = 0, highScore = 0;
-        let magnetActive = false, magnetTimer = 0; let invincibleActive = false, invincibilityTimer = 0;
-        const invincibilityMaterial = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x8b5cf6 });
+        let magnetActive = false, magnetTimer = 0; let invincibleActive = false, invincibilityTimer = 0; const invincibilityMaterial = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x8b5cf6 });
         let doubleCoinsActive = false, doubleCoinsTimer = 0; const doubleCoinsMaterial = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x16a34a }); const playerDoubleCoinsMaterial = new THREE.MeshStandardMaterial({ color: 0xa3e635, emissive: 0x84cc16 }); 
         let isPaused = false; let gameStarted = false; let audioUnlocked = false; let touchStartX = 0, touchStartY = 0; 
+        const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent); const mobileSpeedMultiplier = 1.3; 
 
-        // --- UI and Controls Elements --- (No changes here)
+        // --- UI and Controls Elements ---
         const scoreElement = document.getElementById('score'); const coinsElement = document.getElementById('coins'); const highScoreElement = document.getElementById('highScore');
         const gameOverScreen = document.getElementById('gameOverScreen'); const finalScoreElement = document.getElementById('finalScore'); const restartButton = document.getElementById('restartButton');
         const pauseButton = document.getElementById('pauseButton'); const pauseScreen = document.getElementById('pauseScreen'); const resumeButton = document.getElementById('resumeButton');
         const startupScreen = document.getElementById('startupScreen'); const startButton = document.getElementById('startButton');
 
-        // --- Sounds --- (No changes here)
+        // --- Sounds ---
         const musicSound = document.getElementById('musicSound'); const jumpSound = document.getElementById('jumpSound'); const coinSound = document.getElementById('coinSound'); const crashSound = document.getElementById('crashSound');
 
-        // --- Keyboard Controls --- (No changes here)
+        // --- Keyboard Controls ---
         const keys = {}; window.addEventListener('keydown', (event) => { keys[event.key.toLowerCase()] = true; if (event.key.toLowerCase() === 'p') togglePause(); }); window.addEventListener('keyup', (event) => { keys[event.key.toLowerCase()] = false; });
         
-        // --- Button Controls --- (No changes here)
+        // --- Button Controls ---
         restartButton.addEventListener('click', resetGame); pauseButton.addEventListener('click', togglePause); resumeButton.addEventListener('click', togglePause); startButton.addEventListener('click', startGame);
         
-        // --- Audio Unlock --- (No changes here)
+        // --- Core Functions (unlockAudio, startGame, touch handlers, pause, loadHighScore, resetGame) ---
         function unlockAudio() { if (audioUnlocked) return; const allSounds = [musicSound, jumpSound, coinSound, crashSound]; allSounds.forEach(sound => { sound.play().catch(() => {}); sound.pause(); sound.currentTime = 0; }); if (!isPaused && !gameOver) musicSound.play().catch(e => console.error("Music start failed:", e)); audioUnlocked = true; }
-
-        // --- Start Game --- (No changes here)
         function startGame() { if (gameStarted) return; gameStarted = true; unlockAudio(); startupScreen.style.display = 'none'; animate(); }
-
-        // --- Mobile Touch Controls --- (No changes here)
         window.addEventListener('touchstart', handleTouchStart, { passive: false }); window.addEventListener('touchend', handleTouchEnd, { passive: false });
         function handleTouchStart(event) { if (event.target === pauseButton || event.target === resumeButton || event.target === startButton || event.target === restartButton) return; if (!gameStarted) startGame(); if (isPaused || gameOver) return; event.preventDefault(); touchStartX = event.touches[0].clientX; touchStartY = event.touches[0].clientY; }
         function handleTouchEnd(event) { if (event.target === pauseButton || event.target === resumeButton || event.target === startButton || event.target === restartButton) return; if (!gameStarted || isPaused || gameOver || touchStartX === 0) return; event.preventDefault(); let touchEndX = event.changedTouches[0].clientX; let touchEndY = event.changedTouches[0].clientY; let diffX = touchEndX - touchStartX; let diffY = touchEndY - touchStartY; let swipeThreshold = 30; if (Math.abs(diffX) > Math.abs(diffY)) { if (diffX > swipeThreshold && currentLane < 1) currentLane++; else if (diffX < -swipeThreshold && currentLane > -1) currentLane--; } else { if (diffY > swipeThreshold && !isJumping && !isSliding) { isSliding = true; if (slideAction) slideTimer = (slideAction.getClip().duration - 0.3) * 60; else slideTimer = 40; playAction(slideAction); } else if (diffY < -swipeThreshold && !isJumping && !isSliding) { isJumping = true; jumpVelocity = jumpPower; jumpSound.play(); playAction(jumpAction); } } touchStartX = 0; touchStartY = 0; }
-
-        // --- Pause --- (No changes here)
         function togglePause() { if (gameOver || !gameStarted) return; isPaused = !isPaused; if (isPaused) { pauseScreen.style.display = 'flex'; if (audioUnlocked) musicSound.pause(); } else { pauseScreen.style.display = 'none'; if (audioUnlocked) musicSound.play(); animate(); } }
-
-        // --- High Score --- (No changes here)
         function loadHighScore() { const savedHighScore = localStorage.getItem('streetSurfHighScore'); if (savedHighScore) { highScore = parseInt(savedHighScore, 10); highScoreElement.innerText = `High Score: ${highScore}`; } }
-        
-        // --- Reset Game --- (Minor change to reset rotation)
-        function resetGame() {
-            gameOver = false; isPaused = false; score = 0; coinCount = 0; playerSpeed = 0.5; currentLane = 0; isJumping = false; isSliding = false; 
-            scoreElement.innerText = 'Score: 0'; coinsElement.innerText = 'Coins: 0'; gameOverScreen.style.display = 'none';
-            player.position.set(0, 0, 0); player.scale.set(0.01, 0.01, 0.01); playerHitbox.scale.y = 1.0; 
-            // === NAYA CODE: ROTATION FIX on Reset ===
-            player.rotation.y = Math.PI; // Make sure player faces forward after reset
-            // === END NAYA CODE ===
-            player.traverse(child => { if (child.isMesh) child.material = originalPlayerMaterial; });
-            magnetActive = false; magnetTimer = 0; invincibleActive = false; invincibilityTimer = 0; doubleCoinsActive = false; doubleCoinsTimer = 0;
-            [...obstacles, ...coins, ...powerups].forEach(obj => scene.remove(obj)); obstacles.length = 0; coins.length = 0; powerups.length = 0;
-            groundSegments.forEach((ground, i) => ground.position.z = -i * segmentLength);
-            nextSpawnZ = -40; for(let i=0; i<50; i++) spawnEntities(); 
-            crashSound.pause(); crashSound.currentTime = 0; if (audioUnlocked) { musicSound.currentTime = 0; musicSound.play(); }
-            if(mixer) mixer.stopAllAction(); if(runAction) runAction.reset().play();
-            animate();
-        }
+        function resetGame() { gameOver = false; isPaused = false; score = 0; coinCount = 0; playerSpeed = 0.5; currentLane = 0; isJumping = false; isSliding = false; scoreElement.innerText = 'Score: 0'; coinsElement.innerText = 'Coins: 0'; gameOverScreen.style.display = 'none'; player.position.set(0, 0, 0); player.scale.set(0.01, 0.01, 0.01); playerHitbox.scale.y = 1.0; player.rotation.y = Math.PI; player.traverse(child => { if (child.isMesh) child.material = originalPlayerMaterial; }); magnetActive = false; magnetTimer = 0; invincibleActive = false; invincibilityTimer = 0; doubleCoinsActive = false; doubleCoinsTimer = 0; [...obstacles, ...coins, ...powerups].forEach(obj => scene.remove(obj)); obstacles.length = 0; coins.length = 0; powerups.length = 0; groundSegments.forEach((ground, i) => ground.position.z = -i * segmentLength); nextSpawnZ = -40; for(let i=0; i<50; i++) spawnEntities(); crashSound.pause(); crashSound.currentTime = 0; if (audioUnlocked) { musicSound.currentTime = 0; musicSound.play(); } if(mixer) mixer.stopAllAction(); if(runAction) runAction.reset().play(); animate(); }
 
-        // --- Ground --- (No changes here)
+        // --- Ground & Spawning --- 
         const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x334155 }); for (let i = 0; i < numSegments; i++) { const ground = new THREE.Mesh(new THREE.PlaneGeometry(15, segmentLength), groundMaterial); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.5; ground.position.z = -i * segmentLength; scene.add(ground); groundSegments.push(ground); }
-        
-        // --- Spawning Logic --- (No changes here)
         let nextSpawnZ = -40; function spawnEntities() { const rl=Math.floor(Math.random()*3)-1, st=Math.random(); if(st<.15&&nextSpawnZ<-100){const tl=Math.floor(Math.random()*5)+3; for(let i=0; i<tl; i++){const c=new THREE.Mesh(new THREE.BoxGeometry(4,5,15), new THREE.MeshStandardMaterial({color:0x475569})); c.position.set(rl*laneWidth,2,nextSpawnZ-i*16); c.userData={type:'train'}; scene.add(c); obstacles.push(c);}} else if(st<.65){const it=Math.random()>.5; const o=new THREE.Mesh(it?new THREE.BoxGeometry(4,4,4):new THREE.BoxGeometry(14,2,4), new THREE.MeshStandardMaterial({color:0x7c3aed})); o.position.set(it?rl*laneWidth:0, it?1.5:.5, nextSpawnZ); o.userData={type:'obstacle'}; scene.add(o); obstacles.push(o);} else if(st<.9){for(let i=0; i<5; i++){const c=new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,.2,16), new THREE.MeshStandardMaterial({color:0xffd700, emissive:0xccac00})); c.position.set(rl*laneWidth,.5,nextSpawnZ-i*3); c.rotation.x=Math.PI/2; scene.add(c); coins.push(c);}} else {const pt=Math.random(); let p; if(pt<.33){p=new THREE.Mesh(new THREE.TorusGeometry(.7,.2,16,100), new THREE.MeshStandardMaterial({color:0x9013fe, emissive:0x9013fe})); p.userData.type='magnet';} else if(pt<.66){p=new THREE.Mesh(new THREE.SphereGeometry(.8,16,16), new THREE.MeshStandardMaterial({color:0x38bdf8, emissive:0x38bdf8})); p.userData.type='invincibility';} else {p=new THREE.Mesh(new THREE.BoxGeometry(1,1,1), doubleCoinsMaterial); p.userData.type='doubleCoins';} p.position.set(rl*laneWidth,1,nextSpawnZ); scene.add(p); powerups.push(p);} nextSpawnZ-=Math.random()*40+40; } for(let i=0; i<50; i++) spawnEntities(); 
 
-        // --- Animation Setup --- (No changes here)
+        // --- Animation Setup ---
         let mixer; let runAction, jumpAction, slideAction; const clock = new THREE.Clock(); 
         function playAction(actionToPlay) { if (!runAction || !actionToPlay) return; runAction.fadeOut(0.2); actionToPlay.reset().setLoop(THREE.LoopOnce, 1).clampWhenFinished = true; actionToPlay.fadeIn(0.2).play(); const clipDuration = actionToPlay.getClip().duration; setTimeout(() => { if (gameOver || isPaused) return; actionToPlay.fadeOut(0.2); runAction.reset().fadeIn(0.2).play(); }, (clipDuration - 0.3) * 1000); }
 
         // --- Player Loading ---
         const loader = new THREE.FBXLoader(); 
-        Promise.all([
-            loader.loadAsync('models/player/vanguard_tpose.fbx'), 
-            loader.loadAsync('models/player/Running.fbx'),    
-            loader.loadAsync('models/player/Jumping.fbx'),    
-            loader.loadAsync('models/player/Running Slide.fbx') 
-        ]).then(([characterGltf, runningGltf, jumpingGltf, slidingGltf]) => {
-            
-            player = characterGltf; 
-            player.scale.set(0.01, 0.01, 0.01); player.position.set(0, 0, 0); 
-            // === NAYA CODE: ROTATION FIX ===
-            player.rotation.y = Math.PI; // Model ko 180 degree ghuma do
-            // === END NAYA CODE ===
-            scene.add(player);
-
+        Promise.all([ loader.loadAsync('models/player/vanguard_tpose.fbx'), loader.loadAsync('models/player/Running.fbx'), loader.loadAsync('models/player/Jumping.fbx'), loader.loadAsync('models/player/Running Slide.fbx') ])
+        .then(([characterGltf, runningGltf, jumpingGltf, slidingGltf]) => {
+            player = characterGltf; player.scale.set(0.01, 0.01, 0.01); player.position.set(0, 0, 0); player.rotation.y = Math.PI; scene.add(player);
             mixer = new THREE.AnimationMixer(player); 
-            const runClip = runningGltf.animations[0]; runAction = mixer.clipAction(runClip);
-            const jumpClip = jumpingGltf.animations[0]; jumpAction = mixer.clipAction(jumpClip);
-            const slideClip = slidingGltf.animations[0]; slideAction = mixer.clipAction(slideClip);
-            runAction.play(); 
-
+            const runClip = runningGltf.animations[0]; runAction = mixer.clipAction(runClip); const jumpClip = jumpingGltf.animations[0]; jumpAction = mixer.clipAction(jumpClip); const slideClip = slidingGltf.animations[0]; slideAction = mixer.clipAction(slideClip); runAction.play(); 
             const hitboxGeometry = new THREE.BoxGeometry(0.8, 1.8, 0.8); playerHitbox = new THREE.Mesh(hitboxGeometry, new THREE.MeshBasicMaterial({ visible: false })); scene.add(playerHitbox);
             player.traverse(child => { if (child.isMesh) originalPlayerMaterial = child.material; });
-
             loadHighScore(); animate(); 
-        
         }).catch(error => { console.error('Error loading player models:', error); alert('Player models load nahi ho paaye.'); });
         
-        // --- Difficulty Function --- (No changes here)
+        // --- Difficulty Function ---
         function updateDifficulty() { let csf=0, cms=0, scoreInt=Math.floor(score); if (scoreInt > 1200) { csf = 0.00025; cms = 1.5; if (playerSpeed < 1.0) playerSpeed = 1.0; } else if (scoreInt > 700) { csf = 0.0002; cms = 1.0; if (playerSpeed < 0.8) playerSpeed = 0.8; } else if (scoreInt > 300) { csf = 0.00015; cms = 0.8; if (playerSpeed < 0.65) playerSpeed = 0.65; } else { csf = 0.0001; cms = 0.65; } if (playerSpeed < cms) playerSpeed += csf; else playerSpeed = cms; }
+
+        // --- Resize Listener ---
+        window.addEventListener('resize', onWindowResize, false); function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); setupRenderer(); renderer.render(scene, camera); }
 
         // --- Animation Loop ---
         function animate() {
@@ -163,39 +127,40 @@
 
             score += 0.2; scoreElement.innerText = `Score: ${Math.floor(score)}`;
             updateDifficulty(); 
+            const effectiveSpeed = playerSpeed * (isMobile ? mobileSpeedMultiplier : 1.0);
 
-            // === NAYA CODE: MOVEMENT FIX ===
-            // Keyboard Controls Logic for Movement (Swipe already updates currentLane)
-            if (keys['arrowleft'] && currentLane > -1) { 
-                currentLane--; 
-                keys['arrowleft'] = false; // Consume the key press
-            }
-            if (keys['arrowright'] && currentLane < 1) { 
-                currentLane++; 
-                keys['arrowright'] = false; // Consume the key press
-            }
-            // === END NAYA CODE ===
-
-            // Keyboard Controls Logic for Animation
+            // Controls Logic
+            if (keys['arrowleft'] && currentLane > -1) { currentLane--; keys['arrowleft'] = false; }
+            if (keys['arrowright'] && currentLane < 1) { currentLane++; keys['arrowright'] = false; }
             if (keys['arrowup'] && !isJumping && !isSliding) { isJumping = true; jumpVelocity = jumpPower; jumpSound.play(); playAction(jumpAction); }
             if (keys['arrowdown'] && !isJumping && !isSliding) { isSliding = true; if (slideAction) slideTimer = (slideAction.getClip().duration - 0.3) * 60; else slideTimer = 40; playAction(slideAction); }
 
-            // Treadmill logic
-            groundSegments.forEach(s => { s.position.z += playerSpeed; if (s.position.z > segmentLength) s.position.z -= numSegments * segmentLength; });
-            [...obstacles, ...coins, ...powerups].forEach(obj => { const sm = (obj.userData.type === 'train') ? 1.5 : 1; obj.position.z += playerSpeed * sm; if (obj.position.z > camera.position.z + 20) { obj.position.z -= 800; obj.visible = true; } });
-
-            // Player movement (Ab keyboard/swipe dono se currentLane update hoga)
+            // Movement Logic
+            groundSegments.forEach(s => { s.position.z += effectiveSpeed; if (s.position.z > segmentLength) s.position.z -= numSegments * segmentLength; });
+            [...obstacles, ...coins, ...powerups].forEach(obj => { const sm = (obj.userData.type === 'train') ? 1.5 : 1; obj.position.z += effectiveSpeed * sm; if (obj.position.z > camera.position.z + 20) { obj.position.z -= 800; obj.visible = true; } });
             player.position.x = THREE.MathUtils.lerp(player.position.x, currentLane * laneWidth, 0.2);
             if (isJumping) { player.position.y += jumpVelocity; jumpVelocity += gravity; if (player.position.y <= 0) { player.position.y = 0; isJumping = false; } }
             if (isSliding) { slideTimer--; if (slideTimer <= 0) isSliding = false; }
 
-            // Power-up logic... (No changes here)
+            // Power-up logic... 
             const powerupDuration = 600; if (magnetActive && --magnetTimer <= 0) magnetActive = false; if (invincibleActive && --invincibilityTimer <= 0) { invincibleActive = false; if (!doubleCoinsActive) player.traverse(c => { if (c.isMesh) c.material = originalPlayerMaterial; }); else player.traverse(c => { if (c.isMesh) c.material = playerDoubleCoinsMaterial; }); } if (doubleCoinsActive && --doubleCoinsTimer <= 0) { doubleCoinsActive = false; if (!invincibleActive) player.traverse(c => { if (c.isMesh) c.material = originalPlayerMaterial; }); else player.traverse(c => { if (c.isMesh) c.material = invincibilityMaterial; }); } if (magnetActive) coins.forEach(c => { if(c.visible && player.position.distanceTo(c.position) < 10) c.position.lerp(player.position, 0.1); });
             
-            // Collision logic... (No changes here)
-            playerHitbox.position.copy(player.position); if (isSliding) { playerHitbox.scale.y = 0.3; playerHitbox.position.y += 0.4; } else { playerHitbox.scale.y = 1.0; playerHitbox.position.y += 0.9; } const playerCollider = new THREE.Box3().setFromObject(playerHitbox); if (!invincibleActive) { for (const obstacle of obstacles) { if (player.position.distanceTo(obstacle.position) < 15) { const obstacleBox = new THREE.Box3().setFromObject(obstacle); if (playerCollider.intersectsBox(obstacleBox)) { if (audioUnlocked) musicSound.pause(); crashSound.play(); gameOver = true; if (score > highScore) { highScore = Math.floor(score); localStorage.setItem('streetSurfHighScore', highScore); } finalScoreElement.innerText = `Your Score: ${Math.floor(score)} | High Score: ${highScore}`; gameOverScreen.style.display = 'flex'; return; } } } } [...coins, ...powerups].forEach(item => { if (item.visible) { const itemBox = new THREE.Box3().setFromObject(item); if (playerCollider.intersectsBox(itemBox)) { item.visible = false; if (coins.includes(item)) { const cta = doubleCoinsActive ? 2 : 1; coinCount += cta; coinsElement.innerText = `Coins: ${coinCount}`; coinSound.currentTime = 0; coinSound.play(); } else { if (item.userData.type === 'magnet') { magnetActive = true; magnetTimer = powerupDuration; } if (item.userData.type === 'invincibility') { invincibleActive = true; invincibilityTimer = powerupDuration; player.traverse(c => { if (c.isMesh) c.material = invincibilityMaterial; }); } if (item.userData.type === 'doubleCoins') { doubleCoinsActive = true; doubleCoinsTimer = powerupDuration; if (!invincibleActive) player.traverse(c => { if (c.isMesh) c.material = playerDoubleCoinsMaterial; }); } } } } });
+            // Collision logic...
+            playerHitbox.position.copy(player.position); 
+            // === NAYA CODE: HITBOX FIX ===
+            playerHitbox.position.y += 0.9; // Hitbox ka center hamesha 0.9 upar rakho player se
+            if (isSliding) {
+                playerHitbox.scale.y = 0.3; // Scale ko chota karo
+            } else {
+                playerHitbox.scale.y = 1.0; // Normal scale
+            }
+            // === END NAYA CODE ===
+            const playerCollider = new THREE.Box3().setFromObject(playerHitbox); 
+            
+            if (!invincibleActive) { for (const obstacle of obstacles) { if (player.position.distanceTo(obstacle.position) < 15) { const obstacleBox = new THREE.Box3().setFromObject(obstacle); if (playerCollider.intersectsBox(obstacleBox)) { if (audioUnlocked) musicSound.pause(); crashSound.play(); gameOver = true; if (score > highScore) { highScore = Math.floor(score); localStorage.setItem('streetSurfHighScore', highScore); } finalScoreElement.innerText = `Your Score: ${Math.floor(score)} | High Score: ${highScore}`; gameOverScreen.style.display = 'flex'; return; } } } } 
+            [...coins, ...powerups].forEach(item => { if (item.visible) { const itemBox = new THREE.Box3().setFromObject(item); if (playerCollider.intersectsBox(itemBox)) { item.visible = false; if (coins.includes(item)) { const cta = doubleCoinsActive ? 2 : 1; coinCount += cta; coinsElement.innerText = `Coins: ${coinCount}`; coinSound.currentTime = 0; coinSound.play(); } else { if (item.userData.type === 'magnet') { magnetActive = true; magnetTimer = powerupDuration; } if (item.userData.type === 'invincibility') { invincibleActive = true; invincibilityTimer = powerupDuration; player.traverse(c => { if (c.isMesh) c.material = invincibilityMaterial; }); } if (item.userData.type === 'doubleCoins') { doubleCoinsActive = true; doubleCoinsTimer = powerupDuration; if (!invincibleActive) player.traverse(c => { if (c.isMesh) c.material = playerDoubleCoinsMaterial; }); } } } } });
 
-            // Camera logic... (No changes here)
+            // Camera logic... 
             camera.position.set(player.position.x, player.position.y + 4, player.position.z + 10); camera.lookAt(player.position);
             renderer.render(scene, camera);
         }
